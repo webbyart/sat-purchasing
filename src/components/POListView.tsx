@@ -49,11 +49,12 @@ export default function POListView({ pos = [], prs = [], currentUser, onNavigate
     if (currentUser) {
       if (currentUser.role === UserRole.EMPLOYEE && currentUser.departmentId !== 'DEP004') {
         result = result.filter(po => po.departmentId === currentUser.departmentId);
-      } else if (currentUser.role === UserRole.DEPARTMENT_MANAGER && currentUser.departmentId !== 'DEP004') {
-        result = result.filter(po => po.departmentId === currentUser.departmentId);
-      } else if (currentUser.role === UserRole.ASSISTANT_MANAGER && currentUser.departmentId !== 'DEP004') {
+      } else if (currentUser.role === UserRole.DEPARTMENT_MANAGER) {
+        result = result.filter(po => po.departmentId === currentUser.departmentId || po.status === POStatus.PENDING_PURCHASING_MGR);
+      } else if (currentUser.role === UserRole.ASSISTANT_MANAGER) {
         result = result.filter(po => 
           po.departmentId === currentUser.departmentId ||
+          po.status === POStatus.PENDING_PURCHASING_MGR ||
           po.status === POStatus.APPROVED ||
           po.status === POStatus.SENT_TO_VENDOR ||
           po.status === POStatus.CLOSED

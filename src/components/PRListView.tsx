@@ -43,12 +43,13 @@ export default function PRListView({ prs = [], currentUser, onNavigate, onCancel
     // 4. Executive sees PRs that are past department manager approval state (PENDING_EXECUTIVE, APPROVED, PO_CREATED, REJECTED, CANCELLED)
     if (currentUser.role === UserRole.EMPLOYEE && currentUser.departmentId !== 'DEP004') {
       result = result.filter(pr => pr.requestorId === currentUser.id || pr.requestorEmail === currentUser.email);
-    } else if (currentUser.role === UserRole.DEPARTMENT_MANAGER && currentUser.departmentId !== 'DEP004') {
-      result = result.filter(pr => pr.departmentId === currentUser.departmentId);
-    } else if (currentUser.role === UserRole.ASSISTANT_MANAGER && currentUser.departmentId !== 'DEP004') {
+    } else if (currentUser.role === UserRole.DEPARTMENT_MANAGER) {
+      result = result.filter(pr => pr.departmentId === currentUser.departmentId || pr.status === PRStatus.PENDING_DEPT_MGR);
+    } else if (currentUser.role === UserRole.ASSISTANT_MANAGER) {
       result = result.filter(pr => 
         pr.departmentId === currentUser.departmentId ||
         pr.requestorId === currentUser.id ||
+        pr.status === PRStatus.PENDING_DEPT_MGR ||
         pr.status === PRStatus.APPROVED ||
         pr.status === PRStatus.PO_CREATED
       );

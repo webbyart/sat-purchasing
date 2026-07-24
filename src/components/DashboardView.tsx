@@ -117,7 +117,15 @@ export default function DashboardView({
     if (currentUser.role === UserRole.EMPLOYEE) {
       return rawPRs.filter(p => p.requestorId === currentUser.id || p.requestorEmail === currentUser.email);
     } else if (currentUser.role === UserRole.DEPARTMENT_MANAGER) {
-      return rawPRs.filter(p => p.departmentId === currentUser.departmentId);
+      return rawPRs.filter(p => p.departmentId === currentUser.departmentId || p.status === PRStatus.PENDING_DEPT_MGR);
+    } else if (currentUser.role === UserRole.ASSISTANT_MANAGER) {
+      return rawPRs.filter(p => 
+        p.departmentId === currentUser.departmentId ||
+        p.requestorId === currentUser.id ||
+        p.status === PRStatus.PENDING_DEPT_MGR ||
+        p.status === PRStatus.APPROVED ||
+        p.status === PRStatus.PO_CREATED
+      );
     } else if (currentUser.role === UserRole.EXECUTIVE) {
       return rawPRs.filter(p => p.status !== PRStatus.DRAFT && p.status !== PRStatus.PENDING_DEPT_MGR);
     }
