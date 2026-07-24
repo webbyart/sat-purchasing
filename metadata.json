@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Remix: Purchasing Workflow",
+  "description": "An Enterprise Paperless Electronic Purchasing Workflow System with Digital E-Signatures, custom workflows, A4-friendly PR \u0026 PO generation, and auditing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

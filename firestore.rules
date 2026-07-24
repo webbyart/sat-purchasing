@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default-deny catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isParticipant(participantIds) {
+      return request.auth.uid in participantIds;
+    }
+
+    // Chat Rooms
+    match /chatRooms/{roomId} {
+      allow read, write: if true; 
+      
+      // Messages within a chat room
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+    }
+    
+    // User profiles
+    match /users/{userId} {
+      allow read: if true;
+    }
+  }
+}

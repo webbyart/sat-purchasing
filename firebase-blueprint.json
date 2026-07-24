@@ -1,0 +1,143 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user in the electronic purchasing system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "email": { "type": "string", "description": "Email address" },
+        "role": { "type": "string", "description": "User role: EMPLOYEE, DEPARTMENT_MANAGER, PURCHASING, PURCHASING_MANAGER, EXECUTIVE_VP" },
+        "departmentId": { "type": "string", "description": "Associated department ID" },
+        "departmentName": { "type": "string", "description": "Associated department name" },
+        "isActive": { "type": "boolean", "description": "Whether the user account is active" }
+      },
+      "required": ["id", "name", "email", "role", "departmentId", "departmentName"]
+    },
+    "Department": {
+      "title": "Department",
+      "description": "Represents a company department with an annual budget.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique department ID" },
+        "name": { "type": "string", "description": "Department name" },
+        "code": { "type": "string", "description": "Department code" },
+        "budget": { "type": "number", "description": "Annual budget in THB" },
+        "spent": { "type": "number", "description": "Spent budget in THB" },
+        "remaining": { "type": "number", "description": "Remaining budget in THB" }
+      },
+      "required": ["id", "name", "code", "budget", "spent", "remaining"]
+    },
+    "PurchaseRequisition": {
+      "title": "PurchaseRequisition",
+      "description": "Represents a Purchase Requisition (PR) document.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique PR ID" },
+        "prNumber": { "type": "string", "description": "Formatted automatic running number" },
+        "date": { "type": "string", "description": "Creation date" },
+        "createdById": { "type": "string", "description": "Creator User ID" },
+        "createdByName": { "type": "string", "description": "Creator Name" },
+        "departmentId": { "type": "string", "description": "Department ID" },
+        "departmentName": { "type": "string", "description": "Department name" },
+        "grandTotal": { "type": "number", "description": "Grand total in THB" },
+        "status": { "type": "string", "description": "Current status" },
+        "onHold": { "type": "boolean", "description": "Whether the PR is on hold" },
+        "notes": { "type": "string", "description": "Optional notes" }
+      },
+      "required": ["id", "prNumber", "date", "createdById", "createdByName", "departmentId", "departmentName", "grandTotal", "status"]
+    },
+    "PurchaseOrder": {
+      "title": "PurchaseOrder",
+      "description": "Represents a Purchase Order (PO) document.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique PO ID" },
+        "poNumber": { "type": "string", "description": "Formatted automatic running number" },
+        "referPrId": { "type": "string", "description": "Referenced PR ID" },
+        "referPrNumber": { "type": "string", "description": "Referenced PR Number" },
+        "date": { "type": "string", "description": "PO date" },
+        "vendorId": { "type": "string", "description": "Vendor ID" },
+        "vendorName": { "type": "string", "description": "Vendor Name" },
+        "status": { "type": "string", "description": "Current PO Status" }
+      },
+      "required": ["id", "poNumber", "date", "vendorId", "vendorName", "status"]
+    },
+    "ComparisonSheet": {
+      "title": "ComparisonSheet",
+      "description": "Represents a price comparison sheet (CS).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique comparison ID" },
+        "csNumber": { "type": "string", "description": "Formatted CS Number" },
+        "date": { "type": "string", "description": "CS Date" },
+        "referPrId": { "type": "string", "description": "Referenced PR ID" },
+        "referPrNumber": { "type": "string", "description": "Referenced PR Number" },
+        "departmentId": { "type": "string", "description": "Department ID" },
+        "departmentName": { "type": "string", "description": "Department name" },
+        "status": { "type": "string", "description": "Status of CS" }
+      },
+      "required": ["id", "csNumber", "date", "departmentId", "departmentName", "status"]
+    },
+    "ChatRoom": {
+      "title": "ChatRoom",
+      "description": "Represents a chat room (private or group).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique room ID" },
+        "name": { "type": "string", "description": "Room name for groups, or user names for private chats" },
+        "type": { "type": "string", "enum": ["PRIVATE", "GROUP"], "description": "Type of chat" },
+        "participantIds": { "type": "array", "items": { "type": "string" }, "description": "IDs of users in the chat" },
+        "lastMessage": { "type": "string", "description": "Preview of last message" },
+        "lastMessageAt": { "type": "string", "format": "date-time", "description": "Timestamp of last message" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "type", "participantIds", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Represents a single chat message.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique message ID" },
+        "roomId": { "type": "string", "description": "Associated room ID" },
+        "senderId": { "type": "string", "description": "Sender user ID" },
+        "senderName": { "type": "string", "description": "Sender name" },
+        "text": { "type": "string", "description": "Message content" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the message was sent" }
+      },
+      "required": ["id", "roomId", "senderId", "senderName", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles collection"
+    },
+    "/departments/{departmentId}": {
+      "schema": "Department",
+      "description": "Company departments and their budgets"
+    },
+    "/purchaseRequisitions/{prId}": {
+      "schema": "PurchaseRequisition",
+      "description": "Purchase requisitions"
+    },
+    "/purchaseOrders/{poId}": {
+      "schema": "PurchaseOrder",
+      "description": "Purchase orders"
+    },
+    "/comparisonSheets/{csId}": {
+      "schema": "ComparisonSheet",
+      "description": "Price comparison sheets"
+    },
+    "/chatRooms/{roomId}": {
+      "schema": "ChatRoom",
+      "description": "Chat rooms collection"
+    },
+    "/chatRooms/{roomId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages within a chat room"
+    }
+  }
+}
