@@ -26,7 +26,9 @@ import {
   ChevronRight,
   Maximize,
   MessageSquare,
-  ChevronDown
+  MessageCircle,
+  ChevronDown,
+  ArrowRight
 } from 'lucide-react';
 
 import { 
@@ -59,6 +61,7 @@ import { translations, Language } from './lib/translations';
 
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from './lib/firebase';
+import { supabase } from './lib/supabase';
 
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -76,7 +79,7 @@ import CapexFormView from './components/CapexFormView';
 import PurchasingProcessView from './components/PurchasingProcessView';
 import UserManualView from './components/UserManualView';
 import Chat from './components/Chat';
-import { AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   // Navigation & Sizing
@@ -104,35 +107,146 @@ export default function App() {
   const [showSandboxModal, setShowSandboxModal] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [selectedChatRoomId, setSelectedChatRoomId] = useState<string | null>(null);
+  const [chatToast, setChatToast] = useState<{ roomId: string; senderName: string; text: string } | null>(null);
 
-  // Real-time unread chat counter listener
-  useEffect(() => {
-    if (!currentUser || !db) return;
+  const previousRoomStateRef = React.useRef<Record<string, number>>({});
+  const isFirstMountRef = React.useRef(true);
 
+  // Sound chime synthesizer for chat alerts
+  const playChatNotificationSound = () => {
     try {
-      const q = query(
-        collection(db, 'chatRooms'),
-        where('participantIds', 'array-contains', currentUser.id)
-      );
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        let totalUnread = 0;
-        snapshot.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.unreadCounts && data.unreadCounts[currentUser.id]) {
-            totalUnread += data.unreadCounts[currentUser.id];
-          }
-        });
-        setUnreadChatCount(totalUnread);
-      }, (error) => {
-        console.warn('Real-time chat update subscription warning (Firebase Firestore not active/configured):', error.message);
-      });
-
-      return () => unsubscribe();
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') ctx.resume();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
     } catch (e) {
-      console.warn('Chat listener setup skipped:', e);
+      // Audio autoplay blocked
     }
-  }, [currentUser?.id]);
+  };
+
+  // Real-time unread chat counter & alert notification listener (Firestore + Supabase)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Supabase polling for chat notifications
+    const checkSupabaseChatUnread = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('chat_rooms')
+          .select('*');
+
+        if (!error && data) {
+          let totalUnread = 0;
+          let newestMsg: { roomId: string; senderName: string; text: string } | null = null;
+
+          data.forEach(room => {
+            const pIds = Array.isArray(room.participant_ids) ? room.participant_ids : [];
+            if (pIds.includes(currentUser.id)) {
+              const unreadCounts = room.unread_counts || {};
+              const unreadForMe = unreadCounts[currentUser.id] || 0;
+              totalUnread += unreadForMe;
+
+              const prevUnread = previousRoomStateRef.current[room.id] || 0;
+              if (!isFirstMountRef.current && unreadForMe > prevUnread && room.last_message) {
+                const otherParticipantId = pIds.find((id: string) => id !== currentUser.id);
+                const otherUser = allUsers.find(u => u.id === otherParticipantId);
+                const senderName = otherUser ? (otherUser.thaiName || otherUser.name) : 'เพื่อนร่วมงาน (Colleague)';
+
+                newestMsg = {
+                  roomId: room.id,
+                  senderName,
+                  text: room.last_message
+                };
+              }
+              previousRoomStateRef.current[room.id] = unreadForMe;
+            }
+          });
+
+          setUnreadChatCount(prev => Math.max(prev, totalUnread));
+
+          if (newestMsg) {
+            playChatNotificationSound();
+            setChatToast(newestMsg);
+          }
+
+          isFirstMountRef.current = false;
+        }
+      } catch (e) {
+        // Supabase query fallback
+      }
+    };
+
+    checkSupabaseChatUnread();
+    const supaInterval = setInterval(checkSupabaseChatUnread, 3000);
+
+    let unsubscribe = () => {};
+    if (db) {
+      try {
+        const q = query(
+          collection(db, 'chatRooms'),
+          where('participantIds', 'array-contains', currentUser.id)
+        );
+
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          let totalUnread = 0;
+          let newestMsg: { roomId: string; senderName: string; text: string } | null = null;
+
+          snapshot.docs.forEach(docSnap => {
+            const data = docSnap.data();
+            const roomId = docSnap.id;
+            const unreadForMe = (data.unreadCounts && data.unreadCounts[currentUser.id]) || 0;
+            totalUnread += unreadForMe;
+
+            const prevUnread = previousRoomStateRef.current[roomId] || 0;
+
+            if (!isFirstMountRef.current && unreadForMe > prevUnread && data.lastMessage) {
+              const otherParticipantId = (data.participantIds || []).find((id: string) => id !== currentUser.id);
+              const otherUser = allUsers.find(u => u.id === otherParticipantId);
+              const senderName = otherUser ? (otherUser.thaiName || otherUser.name) : 'เพื่อนร่วมงาน (Colleague)';
+
+              newestMsg = {
+                roomId,
+                senderName,
+                text: data.lastMessage
+              };
+            }
+
+            previousRoomStateRef.current[roomId] = unreadForMe;
+          });
+
+          setUnreadChatCount(prev => Math.max(prev, totalUnread));
+
+          if (newestMsg) {
+            playChatNotificationSound();
+            setChatToast(newestMsg);
+          }
+
+          isFirstMountRef.current = false;
+        }, (error) => {
+          console.warn('Real-time chat update subscription notice:', error.message);
+        });
+      } catch (e) {
+        console.warn('Firestore chat listener setup skipped:', e);
+      }
+    }
+
+    return () => {
+      clearInterval(supaInterval);
+      unsubscribe();
+    };
+  }, [currentUser?.id, allUsers]);
 
   // Sync Master Data helper
   const fetchData = async () => {
@@ -795,9 +909,12 @@ export default function App() {
               >
                 <MessageSquare className="h-4.5 w-4.5" />
                 {unreadChatCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-white shadow-sm animate-in zoom-in duration-200">
-                    {unreadChatCount > 99 ? '99+' : unreadChatCount}
-                  </span>
+                  <>
+                    <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2 rounded-full bg-rose-500 animate-ping" />
+                    <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-rose-600 text-[9px] font-bold text-white border-2 border-white shadow-sm animate-in zoom-in duration-200">
+                      {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                    </span>
+                  </>
                 )}
               </button>
             </div>
@@ -845,6 +962,8 @@ export default function App() {
               workflowRules={workflowRules}
               currentUser={currentUser}
               onNavigate={(view, id) => navigateTo(view, id)}
+              unreadChatCount={unreadChatCount}
+              onOpenChat={() => setShowChat(true)}
             />
           )}
 
@@ -963,8 +1082,76 @@ export default function App() {
             <Chat 
               currentUser={currentUser} 
               allUsers={allUsers} 
-              onClose={() => setShowChat(false)} 
+              initialRoomId={selectedChatRoomId}
+              onClose={() => {
+                setShowChat(false);
+                setSelectedChatRoomId(null);
+              }} 
             />
+          )}
+        </AnimatePresence>
+
+        {/* Real-time Chat Toast Popup Alert */}
+        <AnimatePresence>
+          {chatToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.9 }}
+              className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 max-w-sm w-full bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700/80 p-4 space-y-3 no-print backdrop-blur-md"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="relative shrink-0">
+                    <div className="h-10 w-10 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-400/30 font-bold text-sm">
+                      <MessageSquare className="h-5 w-5 text-sky-400 animate-pulse" />
+                    </div>
+                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-slate-900" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider bg-sky-950/80 px-2 py-0.5 rounded-md border border-sky-800/50">
+                        ข้อความใหม่ถึงคุณ
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-sm text-slate-100 mt-0.5">{chatToast.senderName}</h4>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setChatToast(null)}
+                  className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-300 bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 font-sans line-clamp-2 leading-relaxed">
+                "{chatToast.text}"
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  onClick={() => setChatToast(null)}
+                  className="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  ข้าม
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedChatRoomId(chatToast.roomId);
+                    setShowChat(true);
+                    setChatToast(null);
+                  }}
+                  className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer hover:scale-102 active:scale-98"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  <span>เปิดอ่านแชต</span>
+                </button>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -1002,6 +1189,24 @@ export default function App() {
         >
           <FileCheck className="h-5 w-5" />
           <span className="text-[9px] mt-0.5 font-sans">{t.mobilePO}</span>
+        </button>
+
+        <button
+          onClick={() => setShowChat(!showChat)}
+          className={`flex-1 flex flex-col items-center justify-center h-12 transition-all relative ${
+            showChat ? 'text-sky-600 font-bold' : 'text-slate-400 font-medium'
+          }`}
+          id="btn-mobile-chat"
+        >
+          <div className="relative">
+            <MessageSquare className="h-5 w-5" />
+            {unreadChatCount > 0 && (
+              <span className="absolute -top-1 -right-2 flex h-3.5 min-w-[14px] px-0.5 items-center justify-center rounded-full bg-rose-600 text-[8px] font-bold text-white border border-white">
+                {unreadChatCount > 99 ? '99+' : unreadChatCount}
+              </span>
+            )}
+          </div>
+          <span className="text-[9px] mt-0.5 font-sans">แชตพนักงาน</span>
         </button>
 
         {currentUser.role === UserRole.ADMINISTRATOR && (

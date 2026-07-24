@@ -206,6 +206,31 @@ CREATE TABLE IF NOT EXISTS returns (id text PRIMARY KEY, data jsonb DEFAULT '{}'
 CREATE TABLE IF NOT EXISTS adjustments (id text PRIMARY KEY, data jsonb DEFAULT '{}'::jsonb);
 CREATE TABLE IF NOT EXISTS landed_costs (id text PRIMARY KEY, data jsonb DEFAULT '{}'::jsonb);
 
+-- 13. Table: chat_rooms (Employee Chat Rooms / Private & Group Chat History)
+CREATE TABLE IF NOT EXISTS chat_rooms (
+  id text PRIMARY KEY,
+  name text,
+  type text NOT NULL DEFAULT 'PRIVATE',
+  participant_ids jsonb DEFAULT '[]'::jsonb,
+  last_message text,
+  last_message_at text,
+  created_at text,
+  unread_counts jsonb DEFAULT '{}'::jsonb
+);
+
+-- 14. Table: chat_messages (Employee Chat Messages / Chat History Log)
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id text PRIMARY KEY,
+  room_id text NOT NULL,
+  sender_id text NOT NULL,
+  sender_name text NOT NULL,
+  text text NOT NULL,
+  created_at text NOT NULL,
+  read_by jsonb DEFAULT '[]'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_room_id ON chat_messages(room_id);
+
 -- Disable Row Level Security (RLS) to allow direct anonymous REST access 
 -- (Perfect for quick and painless client-side integration via the anon key)
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
@@ -227,3 +252,5 @@ ALTER TABLE credit_purchases DISABLE ROW LEVEL SECURITY;
 ALTER TABLE returns DISABLE ROW LEVEL SECURITY;
 ALTER TABLE adjustments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE landed_costs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_rooms DISABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages DISABLE ROW LEVEL SECURITY;

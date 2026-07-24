@@ -2859,6 +2859,127 @@ app.post('/api/notifications/:id/read', (req, res) => {
   res.json({ success: true });
 });
 
+// 8. Chat Rooms & Messages API routes (Supabase persistence)
+app.get('/api/chat/rooms', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    const { data, error } = await supabase
+      .from('chat_rooms')
+      .select('*')
+      .order('last_message_at', { ascending: false });
+
+    if (!error && data) {
+      const rooms = data.map(r => ({
+        id: r.id,
+        name: r.name || undefined,
+        type: r.type || 'PRIVATE',
+        participantIds: Array.isArray(r.participant_ids) ? r.participant_ids : [],
+        lastMessage: r.last_message || undefined,
+        lastMessageAt: r.last_message_at || undefined,
+        createdAt: r.created_at,
+        unreadCounts: r.unread_counts || {}
+      }));
+      if (userId) {
+        return res.json(rooms.filter(r => r.participantIds.includes(String(userId))));
+      }
+      return res.json(rooms);
+    }
+  } catch (e) {
+    console.error('API /api/chat/rooms error:', e);
+  }
+  res.json([]);
+});
+
+app.post('/api/chat/rooms', async (req, res) => {
+  try {
+    const { id, name, type, participantIds, createdAt } = req.body;
+    const roomPayload = {
+      id,
+      name: name || null,
+      type: type || 'PRIVATE',
+      participant_ids: participantIds || [],
+      last_message_at: new Date().toISOString(),
+      created_at: createdAt || new Date().toISOString(),
+      unread_counts: {}
+    };
+    await supabase.from('chat_rooms').upsert(roomPayload);
+    res.json({ success: true, room: roomPayload });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Failed to create chat room' });
+  }
+});
+
+app.get('/api/chat/messages', async (req, res) => {
+  try {
+    const { roomId } = req.query;
+    if (!roomId) return res.status(400).json({ error: 'roomId parameter required' });
+
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('room_id', String(roomId))
+      .order('created_at', { ascending: true });
+
+    if (!error && data) {
+      const messages = data.map(m => ({
+        id: m.id,
+        roomId: m.room_id,
+        senderId: m.sender_id,
+        senderName: m.sender_name,
+        text: m.text,
+        createdAt: m.created_at,
+        readBy: Array.isArray(m.read_by) ? m.read_by : []
+      }));
+      return res.json(messages);
+    }
+  } catch (e) {
+    console.error('API /api/chat/messages error:', e);
+  }
+  res.json([]);
+});
+
+app.post('/api/chat/messages', async (req, res) => {
+  try {
+    const { id, roomId, senderId, senderName, text, createdAt, readBy } = req.body;
+    const msgId = id || `MSG_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const nowIso = createdAt || new Date().toISOString();
+
+    const msgPayload = {
+      id: msgId,
+      room_id: roomId,
+      sender_id: senderId,
+      sender_name: senderName,
+      text,
+      created_at: nowIso,
+      read_by: readBy || [senderId]
+    };
+
+    await supabase.from('chat_messages').insert(msgPayload);
+
+    // Update last message in room
+    const { data: roomData } = await supabase.from('chat_rooms').select('*').eq('id', roomId).single();
+    if (roomData) {
+      const updatedUnread = { ...(roomData.unread_counts || {}) };
+      if (Array.isArray(roomData.participant_ids)) {
+        roomData.participant_ids.forEach((pId: string) => {
+          if (pId !== senderId) {
+            updatedUnread[pId] = (updatedUnread[pId] || 0) + 1;
+          }
+        });
+      }
+      await supabase.from('chat_rooms').update({
+        last_message: text,
+        last_message_at: nowIso,
+        unread_counts: updatedUnread
+      }).eq('id', roomId);
+    }
+
+    res.json({ success: true, message: msgPayload });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Failed to post chat message' });
+  }
+});
+
 // Price Comparison (Comparison Sheets) API routes
 app.get('/api/comparison', (req, res) => {
   res.json(db.comparisonSheets || []);

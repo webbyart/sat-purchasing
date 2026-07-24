@@ -25,7 +25,9 @@ import {
   AlertTriangle,
   BarChart2,
   Sliders,
-  Check
+  Check,
+  MessageSquare,
+  MessageCircle
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -88,6 +90,8 @@ interface DashboardViewProps {
   workflowRules?: WorkflowRule[];
   onNavigate: (view: string, targetId?: string) => void;
   currentUser: User;
+  unreadChatCount?: number;
+  onOpenChat?: () => void;
 }
 
 export default function DashboardView({ 
@@ -96,7 +100,9 @@ export default function DashboardView({
   departments: rawDeptsInput = [], 
   workflowRules = [],
   onNavigate, 
-  currentUser 
+  currentUser,
+  unreadChatCount = 0,
+  onOpenChat
 }: DashboardViewProps) {
   const rawPRs = Array.isArray(rawPRsInput) ? rawPRsInput : [];
   const rawPOs = Array.isArray(rawPOsInput) ? rawPOsInput : [];
@@ -258,6 +264,21 @@ export default function DashboardView({
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
+          {onOpenChat && (
+            <button 
+              onClick={onOpenChat}
+              className="px-3.5 py-2 text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 rounded-md hover:bg-sky-100 transition-all flex items-center gap-1.5 cursor-pointer relative"
+              title="เปิดข้อความแชทพนักงาน"
+            >
+              <MessageSquare className="h-4 w-4 text-sky-600" />
+              <span>แชตพนักงาน</span>
+              {unreadChatCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 bg-rose-500 text-white font-extrabold text-[10px] rounded-full animate-pulse">
+                  {unreadChatCount}
+                </span>
+              )}
+            </button>
+          )}
           <button 
             onClick={() => onNavigate('pr-new')}
             className="px-4 py-2 text-xs font-semibold bg-adminty-primary text-white rounded-md hover:opacity-90 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
@@ -268,6 +289,45 @@ export default function DashboardView({
           </button>
         </div>
       </div>
+
+      {/* Prominent Chat Alert Banner on Home Screen when unread messages exist */}
+      {unreadChatCount > 0 && onOpenChat && (
+        <div 
+          onClick={onOpenChat}
+          className="p-4 bg-gradient-to-r from-slate-900 via-sky-950 to-indigo-950 text-white rounded-xl shadow-lg border border-sky-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer hover:border-sky-400 transition-all group animate-in slide-in-from-top-2 duration-300"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="relative p-3 bg-sky-500/20 rounded-xl border border-sky-400/40 text-sky-300 shrink-0">
+              <MessageSquare className="h-6 w-6 animate-bounce" />
+              <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] px-1 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white border-2 border-slate-900 shadow-sm">
+                {unreadChatCount}
+              </span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-extrabold text-white">คุณมีข้อความแชตใหม่ที่ไม่ได้รับอ่าน ({unreadChatCount} ข้อความ)</h3>
+                <span className="bg-rose-500/90 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">
+                  แจ้งเตือนแชตสดหน้าแรก
+                </span>
+              </div>
+              <p className="text-xs text-sky-200/90 mt-1">
+                เพื่อนร่วมงานส่งข้อความหาคุณ คลิกที่นี่เพื่อเปิดหน้าต่างสนทนาและโต้ตอบได้ทันที
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenChat();
+            }}
+            className="w-full sm:w-auto px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-lg shadow-md transition-all flex items-center justify-center gap-1.5 shrink-0 group-hover:scale-102 cursor-pointer"
+          >
+            <MessageCircle className="h-4 w-4" />
+            <span>ตอบกลับแชตทันที</span>
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* 4 Hero Stats Cards arranged as exactly shown in the Adminty UI */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">

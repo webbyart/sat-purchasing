@@ -21,9 +21,11 @@ import {
   RefreshCw,
   Trash2,
   CheckCircle,
-  FileCheck
+  FileCheck,
+  Paperclip,
+  Upload
 } from 'lucide-react';
-import { PR, User, UserRole, PRStatus, PO } from '../types.js';
+import { PR, User, UserRole, PRStatus, PO, Attachment } from '../types.js';
 import { deletePrApi } from '../lib/apiClient.js';
 import SignaturePad from './SignaturePad.js';
 import DocumentPreviewModal from './DocumentPreviewModal.js';
@@ -91,11 +93,44 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
     }, 150);
   };
 
-  // Master Admin edit states
+  // PR Edit & Attachment states
   const [isEditing, setIsEditing] = useState(false);
   const [editObjective, setEditObjective] = useState(pr.purchaseObjective);
   const [editItems, setEditItems] = useState(pr.items);
+  const [editAttachments, setEditAttachments] = useState<Attachment[]>(pr.attachments || []);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setEditObjective(pr.purchaseObjective);
+    setEditItems(pr.items);
+    setEditAttachments(pr.attachments || []);
+  }, [pr]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const files: File[] = Array.from(e.target.files);
+    files.forEach((file: File) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64Url = reader.result as string;
+        const newAttach: Attachment = {
+          id: `ATT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type || 'application/octet-stream',
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: currentUser?.name || 'Requestor',
+          url: base64Url
+        };
+        setEditAttachments(prev => [...prev, newAttach]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemoveAttachment = (attId: string) => {
+    setEditAttachments(prev => prev.filter(a => a.id !== attId));
+  };
 
   const handleSaveChanges = async () => {
     setIsSaving(true);
@@ -105,7 +140,8 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           purchaseObjective: editObjective,
-          items: editItems
+          items: editItems,
+          attachments: editAttachments
         })
       });
       if (!res.ok) {
@@ -113,7 +149,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
         throw new Error(err.message || 'Failed to save PR modifications');
       }
       setIsEditing(false);
-      alert('แก้ไขใบขอซื้อสำเร็จเรียบร้อย!');
+      alert('แก้ไขใบขอซื้อและอัปเดตเอกสารสำเร็จเรียบร้อย!');
       if (onStatusUpdate) {
         onStatusUpdate(pr.id, pr.status);
       } else {
@@ -353,46 +389,68 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
               </div>
             )}
 
-            {/* Master Admin Actions */}
-            {currentUser && (currentUser.employeeId === '43210344' || currentUser.role === UserRole.ADMINISTRATOR) && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setIsEditing(!isEditing)}
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md cursor-pointer hover:scale-102 active:scale-98"
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  {isEditing ? 'ปิดการแก้ไข' : 'แก้ไขใบขอซื้อ (Edit Requisition)'}
-                </button>
-                <button
-                  onClick={async () => {
-                    if (window.confirm('คุณต้องการลบใบขอซื้อ (PR) นี้อย่างถาวรใช่หรือไม่?')) {
-                      try {
-                        const res = await deletePrApi(pr.id);
-                        alert('ลบเอกสารใบขอซื้อสำเร็จ');
-                        onCancel();
-                      } catch (err: any) {
-                        alert(err.message || 'เกิดข้อผิดพลาดในการลบ');
-                      }
-                    }
-                  }}
-                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md cursor-pointer hover:scale-102 active:scale-98"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  ลบใบขอซื้อ (Delete PR)
-                </button>
-              </div>
-            )}
+            {/* Actions for PR Requestor / Admin / Managers */}
+            {(() => {
+              const isRequestor = currentUser && (
+                currentUser.id === pr.requestorId ||
+                currentUser.email === pr.requestorEmail ||
+                currentUser.name === pr.requestorName ||
+                currentUser.employeeId === pr.requestorId ||
+                (currentUser.thaiName && pr.requestorName && currentUser.thaiName.includes(pr.requestorName))
+              );
+
+              const canEditPR = currentUser && (
+                isRequestor ||
+                currentUser.role === UserRole.ADMINISTRATOR ||
+                currentUser.employeeId === '43210344' ||
+                currentUser.role === UserRole.ASSISTANT_MANAGER ||
+                currentUser.role === UserRole.DEPARTMENT_MANAGER
+              );
+
+              if (!canEditPR) return null;
+
+              return (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsEditing(!isEditing)}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md cursor-pointer hover:scale-102 active:scale-98"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    {isEditing ? 'ปิดการแก้ไข' : 'แก้ไขใบขอซื้อ / แนบเอกสาร (Edit Requisition)'}
+                  </button>
+                  {(currentUser.role === UserRole.ADMINISTRATOR || currentUser.employeeId === '43210344') && (
+                    <button
+                      onClick={async () => {
+                        if (window.confirm('คุณต้องการลบใบขอซื้อ (PR) นี้อย่างถาวรใช่หรือไม่?')) {
+                          try {
+                            const res = await deletePrApi(pr.id);
+                            alert('ลบเอกสารใบขอซื้อสำเร็จ');
+                            onCancel();
+                          } catch (err: any) {
+                            alert(err.message || 'เกิดข้อผิดพลาดในการลบ');
+                          }
+                        }
+                      }}
+                      className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md cursor-pointer hover:scale-102 active:scale-98"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      ลบใบขอซื้อ (Delete PR)
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
 
-      {/* Master Admin Edit Panel */}
+      {/* PR Requestor & Admin Edit Panel */}
       {isEditing && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 text-left space-y-6 no-print shadow-xl animate-in fade-in zoom-in duration-200 max-w-4xl mx-auto">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-sm font-bold text-slate-950 uppercase tracking-wider">Master Admin Document Editor</h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">คุณสามารถแก้ไขรายการวัตถุประสงค์และตารางพัสดุสำหรับใบขอซื้อ {pr.prNumber || pr.id} ได้โดยตรง</p>
+              <h3 className="text-sm font-bold text-slate-950 uppercase tracking-wider">แก้ไขใบขอซื้อและแนบเอกสาร (Requisition Editor)</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">คุณสามารถแก้ไขรายการพัสดุ วัตถุประสงค์ และแนบไฟล์เอกสารใบเสนอราคาเพิ่มเติมสำหรับใบขอซื้อ {pr.prNumber || pr.id} ได้ที่นี่</p>
             </div>
             <button
               onClick={() => setIsEditing(false)}
@@ -402,7 +460,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
             </button>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div>
               <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">วัตถุประสงค์การจัดซื้อ (Purchase Objective)</label>
               <input
@@ -497,7 +555,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                           <button
                             type="button"
                             onClick={() => handleRemoveEditItem(idx)}
-                            className="text-rose-500 hover:text-rose-700 p-1 rounded-md hover:bg-rose-50 transition-colors"
+                            className="text-rose-500 hover:text-rose-700 p-1 rounded-md hover:bg-rose-50 transition-colors cursor-pointer"
                           >
                             <X className="h-4 w-4" />
                           </button>
@@ -507,6 +565,55 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* Document Attachments Manager */}
+            <div className="space-y-2 border-t border-slate-100 pt-4">
+              <div className="flex justify-between items-center">
+                <label className="block text-[10px] font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5 text-sky-600" />
+                  <span>แนบเอกสารเพิ่มเติม / ใบเสนอราคา (Attachments)</span>
+                </label>
+                <label className="px-3 py-1 bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs">
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>+ เลือกไฟล์แนบเพิ่ม</span>
+                  <input 
+                    type="file" 
+                    multiple 
+                    onChange={handleFileUpload} 
+                    className="hidden" 
+                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
+                  />
+                </label>
+              </div>
+
+              {editAttachments.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                  {editAttachments.map((file, idx) => (
+                    <div key={file.id || idx} className="flex justify-between items-center border border-slate-200 p-2.5 rounded-xl bg-slate-50 text-xs">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <FileText className="h-4 w-4 text-slate-500 shrink-0" />
+                        <div className="truncate">
+                          <p className="font-semibold text-slate-800 truncate max-w-[180px]" title={file.fileName}>{file.fileName}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">{(file.fileSize / 1024).toFixed(1)} KB</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAttachment(file.id)}
+                        className="text-rose-500 hover:text-rose-700 p-1 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        title="ลบเอกสารแนบนี้"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-xl border border-dashed border-slate-200 text-center">
+                  ยังไม่มีเอกสารแนบ คลิกปุ่ม "+ เลือกไฟล์แนบเพิ่ม" ด้านบนเพื่ออัปโหลดใบเสนอราคาหรือไฟล์ประกอบ
+                </div>
+              )}
             </div>
           </div>
 
@@ -891,9 +998,87 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
       </div>
 
         {/* Attachments Section */}
-        {pr.attachments.length > 0 && (
-          <div className="p-6 border-b border-slate-200 no-print bg-white">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">Linked Quotation Documents</h4>
+        <div className="p-6 border-b border-slate-200 no-print bg-white">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Paperclip className="h-4 w-4 text-sky-600" />
+              Linked Quotation Documents & Attachments (เอกสารแนบประกอบ)
+            </h4>
+
+            {(() => {
+              const isRequestor = currentUser && (
+                currentUser.id === pr.requestorId ||
+                currentUser.email === pr.requestorEmail ||
+                currentUser.name === pr.requestorName ||
+                currentUser.employeeId === pr.requestorId ||
+                (currentUser.thaiName && pr.requestorName && currentUser.thaiName.includes(pr.requestorName))
+              );
+
+              const canEditPR = currentUser && (
+                isRequestor ||
+                currentUser.role === UserRole.ADMINISTRATOR ||
+                currentUser.employeeId === '43210344' ||
+                currentUser.role === UserRole.ASSISTANT_MANAGER ||
+                currentUser.role === UserRole.DEPARTMENT_MANAGER
+              );
+
+              if (!canEditPR) return null;
+
+              return (
+                <label className="text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs self-start sm:self-auto">
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>+ แนบเอกสารเพิ่ม (Attach File)</span>
+                  <input 
+                    type="file" 
+                    multiple 
+                    onChange={async (e) => {
+                      if (!e.target.files || e.target.files.length === 0) return;
+                      const files: File[] = Array.from(e.target.files);
+                      const newAttachments: Attachment[] = [];
+                      for (const file of files) {
+                        const base64Url = await new Promise<string>((resolve) => {
+                          const reader = new FileReader();
+                          reader.onload = () => resolve(reader.result as string);
+                          reader.readAsDataURL(file);
+                        });
+                        newAttachments.push({
+                          id: `ATT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                          fileName: file.name,
+                          fileSize: file.size,
+                          fileType: file.type || 'application/octet-stream',
+                          uploadedAt: new Date().toISOString(),
+                          uploadedBy: currentUser?.name || 'Requestor',
+                          url: base64Url
+                        });
+                      }
+                      const updated = [...(pr.attachments || []), ...newAttachments];
+                      try {
+                        const res = await fetch(`/api/pr/${pr.id}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ attachments: updated })
+                        });
+                        if (res.ok) {
+                          alert('แนบเอกสารสำเร็จเรียบร้อย!');
+                          if (onStatusUpdate) {
+                            onStatusUpdate(pr.id, pr.status);
+                          } else {
+                            window.location.reload();
+                          }
+                        }
+                      } catch (err) {
+                        alert('เกิดข้อผิดพลาดในการแนบเอกสาร');
+                      }
+                    }} 
+                    className="hidden" 
+                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
+                  />
+                </label>
+              );
+            })()}
+          </div>
+
+          {pr.attachments && pr.attachments.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {pr.attachments.map((file, idx) => (
                 <div key={idx} className="flex justify-between items-center border border-slate-200 p-3 rounded-xl bg-slate-50 hover:bg-slate-100/60 transition-colors">
@@ -919,7 +1104,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                       Preview
                     </button>
                     <a
-                      href={file.url}
+                      href={file.url || '#'}
                       download={file.fileName}
                       className="text-slate-500 hover:text-sky-600 p-1.5 bg-white border border-slate-200 hover:border-sky-300 hover:bg-sky-50 rounded-lg transition-colors shadow-2xs flex items-center gap-1 text-[10px] font-bold"
                     >
@@ -930,8 +1115,13 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-4 text-center">
+              <p className="text-xs text-slate-500 font-medium">ยังไม่มีเอกสารแนบสำหรับใบขอซื้อนี้</p>
+              <p className="text-[11px] text-slate-400 mt-1">คนออก PR หรือผู้จัดการสามารถกด "+ แนบเอกสารเพิ่ม" เพื่ออัปโหลดใบเสนอราคาหรือไฟล์ประกอบได้</p>
+            </div>
+          )}
+        </div>
 
         {/* Workflow Log History (Audit Trail) */}
         <div className="p-6 bg-white no-print">
