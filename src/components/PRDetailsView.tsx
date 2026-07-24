@@ -28,7 +28,7 @@ import {
 import { PR, User, UserRole, PRStatus, PO, Attachment } from '../types.js';
 import { deletePrApi } from '../lib/apiClient.js';
 import SignaturePad from './SignaturePad.js';
-import DocumentPreviewModal from './DocumentPreviewModal.js';
+import DocumentPreviewModal, { openFileInNewTab } from './DocumentPreviewModal.js';
 import ProcessPackagePrint from './ProcessPackagePrint.js';
 
 interface PRDetailsViewProps {
@@ -1097,7 +1097,10 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                   </div>
                   <div className="flex gap-1.5">
                     <button
-                      onClick={() => setPreviewFile({ fileName: file.fileName, fileUrl: file.url })}
+                      onClick={() => {
+                        openFileInNewTab(file.url, file.fileName);
+                        setPreviewFile({ fileName: file.fileName, fileUrl: file.url });
+                      }}
                       className="text-sky-600 hover:text-sky-800 p-1.5 bg-white border border-sky-100 hover:border-sky-300 hover:bg-sky-50 rounded-lg transition-colors shadow-2xs flex items-center gap-1 text-[10px] font-bold cursor-pointer"
                     >
                       <Eye className="h-3.5 w-3.5" />

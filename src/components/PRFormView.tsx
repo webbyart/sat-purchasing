@@ -13,10 +13,12 @@ import {
   Building,
   AlertCircle,
   FileText,
-  Search
+  Search,
+  Eye
 } from 'lucide-react';
 import { Vendor, User, Department, PRItem, Attachment } from '../types.js';
 import SignaturePad from './SignaturePad.js';
+import DocumentPreviewModal, { openFileInNewTab } from './DocumentPreviewModal.js';
 import { getAccessToken } from '../lib/googleDrive.js';
 import { saveVendorApi } from '../lib/apiClient.js';
 import { HardDrive } from 'lucide-react';
@@ -56,6 +58,7 @@ export default function PRFormView({ currentUser, vendors, departments, onSave, 
     { partNo: '', description: '', specification: '', unit: 'PCS', qty: 1, unitPrice: 0, total: 0 }
   ]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [previewFile, setPreviewFile] = useState<{ fileName: string; fileUrl: string } | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showSignaturePad, setShowSignaturePad] = useState(false);
@@ -734,13 +737,28 @@ export default function PRFormView({ currentUser, vendors, departments, onSave, 
                         </p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveAttachment(file.id)}
-                      className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          openFileInNewTab(file.url, file.fileName);
+                          setPreviewFile({ fileName: file.fileName, fileUrl: file.url });
+                        }}
+                        className="text-sky-600 hover:text-sky-800 p-1 bg-sky-50 hover:bg-sky-100 rounded text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                        title="ดูตัวอย่างไฟล์แนบจริง"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        <span>Preview</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAttachment(file.id)}
+                        className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-50 cursor-pointer"
+                        title="ลบไฟล์แนบ"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -923,6 +941,30 @@ export default function PRFormView({ currentUser, vendors, departments, onSave, 
           isExecutive={currentUser.role === 'EXECUTIVE'}
           onSave={handleSaveSignature}
           onCancel={() => setShowSignaturePad(false)}
+        />
+      )}
+
+      {previewFile && (
+        <DocumentPreviewModal
+          fileName={previewFile.fileName}
+          fileUrl={previewFile.fileUrl}
+          onClose={() => setPreviewFile(null)}
+          vendorName={localVendors.find(v => v.id === selectedVendorId)?.name || 'Selected Vendor'}
+          items={items.map(it => ({
+            partNo: it.partNo || '',
+            description: it.description || '',
+            specification: it.specification || '',
+            unit: it.unit || 'PCS',
+            qty: it.qty || 0,
+            unitPrice: it.unitPrice || 0,
+            total: (it.qty || 0) * (it.unitPrice || 0)
+          }))}
+          subtotal={items.reduce((sum, item) => sum + ((item.qty || 0) * (item.unitPrice || 0)), 0)}
+          vat={items.reduce((sum, item) => sum + ((item.qty || 0) * (item.unitPrice || 0)), 0) * 0.07}
+          grandTotal={items.reduce((sum, item) => sum + ((item.qty || 0) * (item.unitPrice || 0)), 0) * 1.07}
+          documentDate={new Date().toISOString().split('T')[0]}
+          documentNumber="PR-NEW"
+          companyName={companyName}
         />
       )}
     </div>

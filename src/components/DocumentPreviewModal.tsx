@@ -39,12 +39,21 @@ interface DocumentPreviewModalProps {
   companyName?: string;
 }
 
-function dataURLtoBlob(dataurl: string): Blob | null {
+function dataURLtoBlob(dataurl: string, fileName?: string): Blob | null {
   try {
     const arr = dataurl.split(',');
     if (arr.length < 2) return null;
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    let mimeMatch = arr[0].match(/:(.*?);/);
+    let mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+
+    if (fileName) {
+      const lower = fileName.toLowerCase();
+      if (lower.endsWith('.pdf')) mime = 'application/pdf';
+      else if (lower.endsWith('.png')) mime = 'image/png';
+      else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
+      else if (lower.endsWith('.webp')) mime = 'image/webp';
+    }
+
     const bstr = atob(arr[1]);
     let n = bstr.length;
     const u8arr = new Uint8Array(n);
@@ -55,6 +64,45 @@ function dataURLtoBlob(dataurl: string): Blob | null {
   } catch (e) {
     return null;
   }
+}
+
+export function openFileInNewTab(fileUrl?: string, fileName?: string) {
+  if (!fileUrl) return;
+
+  if (fileUrl.startsWith('data:')) {
+    try {
+      const arr = fileUrl.split(',');
+      if (arr.length >= 2) {
+        let mimeMatch = arr[0].match(/:(.*?);/);
+        let mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+        if (fileName) {
+          const lower = fileName.toLowerCase();
+          if (lower.endsWith('.pdf')) mime = 'application/pdf';
+          else if (lower.endsWith('.png')) mime = 'image/png';
+          else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
+          else if (lower.endsWith('.webp')) mime = 'image/webp';
+        }
+
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        const win = window.open(blobUrl, '_blank');
+        if (!win) {
+          location.href = blobUrl;
+        }
+        return;
+      }
+    } catch (e) {
+      console.error("Error opening blob in new tab:", e);
+    }
+  }
+
+  window.open(fileUrl, '_blank');
 }
 
 export default function DocumentPreviewModal({
@@ -74,16 +122,45 @@ export default function DocumentPreviewModal({
 }: DocumentPreviewModalProps) {
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
-  const [viewMode, setViewMode] = useState<'embed' | 'simulated'>('simulated');
+  const autoOpenedRef = React.useRef(false);
+
+  const hasRealFile = Boolean(
+    fileUrl && (
+      fileUrl.startsWith('data:') || 
+      fileUrl.startsWith('http://') || 
+      fileUrl.startsWith('https://') || 
+      fileUrl.startsWith('blob:')
+    )
+  );
+
+  const [viewMode, setViewMode] = useState<'embed' | 'simulated'>(() => {
+    return hasRealFile ? 'embed' : 'simulated';
+  });
+
   const [currentPage, setCurrentPage] = useState(1);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const totalPages = 1;
+
+  // Auto-open in new tab immediately when modal is triggered with a real file
+  useEffect(() => {
+    if (!autoOpenedRef.current && hasRealFile && fileUrl) {
+      autoOpenedRef.current = true;
+      openFileInNewTab(fileUrl, fileName);
+    }
+  }, [fileUrl, fileName, hasRealFile]);
+
+  // Sync viewMode if fileUrl changes
+  useEffect(() => {
+    if (hasRealFile) {
+      setViewMode('embed');
+    }
+  }, [fileUrl, hasRealFile]);
 
   // Convert base64 data URLs to browser Blob URLs to prevent Chrome iframe blocking
   useEffect(() => {
     if (fileUrl && fileUrl.startsWith('data:')) {
       try {
-        const blob = dataURLtoBlob(fileUrl);
+        const blob = dataURLtoBlob(fileUrl, fileName);
         if (blob) {
           const url = URL.createObjectURL(blob);
           setBlobUrl(url);
@@ -97,7 +174,7 @@ export default function DocumentPreviewModal({
     } else {
       setBlobUrl(null);
     }
-  }, [fileUrl]);
+  }, [fileUrl, fileName]);
 
   const handlePrint = () => {
     // If simulated, we can trigger print of that specific element
@@ -131,9 +208,7 @@ export default function DocumentPreviewModal({
 
   const isRealDataOrHttpUrl = Boolean(
     fileUrl && (
-      fileUrl.startsWith('data:image/') || 
-      fileUrl.startsWith('data:application/pdf') || 
-      fileUrl.startsWith('data:text/') ||
+      fileUrl.startsWith('data:') || 
       fileUrl.startsWith('http://') || 
       fileUrl.startsWith('https://') || 
       fileUrl.startsWith('blob:')
@@ -211,28 +286,28 @@ export default function DocumentPreviewModal({
             {!isImage && (
               <div className="bg-slate-900 border border-slate-800 rounded-lg p-0.5 flex gap-1">
                 <button
-                  onClick={() => setViewMode('simulated')}
-                  className={`text-xs px-3 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    viewMode === 'simulated'
-                      ? 'bg-sky-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                  }`}
-                  title="แสดงเอกสารฉบับสมบูรณ์ High-Fi Document Reader"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>High-Fi Reader</span>
-                </button>
-                <button
                   onClick={() => setViewMode('embed')}
                   className={`text-xs px-3 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     viewMode === 'embed'
                       ? 'bg-sky-600 text-white shadow-xs'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                   }`}
-                  title="โหลดไฟล์ต้นฉบับ PDF"
+                  title="แสดงไฟล์จริงที่แนบมา (Real Attached PDF / Document)"
                 >
                   <Layers className="h-3.5 w-3.5" />
-                  <span>Standard PDF</span>
+                  <span>ไฟล์แนบจริง (Real File)</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('simulated')}
+                  className={`text-xs px-3 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    viewMode === 'simulated'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                  title="แสดงตารางสรุปรายการใบเสนอราคา"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>สรุปรายการสินค้า</span>
                 </button>
               </div>
             )}

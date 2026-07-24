@@ -23,7 +23,7 @@ import {
 import { PO, User, UserRole, POStatus, PR } from '../types.js';
 import { deletePoApi } from '../lib/apiClient.js';
 import SignaturePad from './SignaturePad.js';
-import DocumentPreviewModal from './DocumentPreviewModal.js';
+import DocumentPreviewModal, { openFileInNewTab } from './DocumentPreviewModal.js';
 import ProcessPackagePrint from './ProcessPackagePrint.js';
 
 interface PODetailsViewProps {
@@ -800,7 +800,10 @@ export default function PODetailsView({
                   </div>
                   <div className="flex gap-1">
                     <button
-                      onClick={() => setPreviewFile({ fileName: `Invoice-${po.poNumber}.png`, fileUrl: invoiceBase64 })}
+                      onClick={() => {
+                        openFileInNewTab(invoiceBase64, `Invoice-${po.poNumber}.png`);
+                        setPreviewFile({ fileName: `Invoice-${po.poNumber}.png`, fileUrl: invoiceBase64 });
+                      }}
                       className="p-1 text-sky-600 hover:text-sky-800 hover:bg-slate-50 rounded cursor-pointer"
                       title="Preview Invoice"
                     >
@@ -844,7 +847,10 @@ export default function PODetailsView({
                   </div>
                   <div className="flex gap-1">
                     <button
-                      onClick={() => setPreviewFile({ fileName: `DeliveryNote-${po.poNumber}.png`, fileUrl: deliveryBase64 })}
+                      onClick={() => {
+                        openFileInNewTab(deliveryBase64, `DeliveryNote-${po.poNumber}.png`);
+                        setPreviewFile({ fileName: `DeliveryNote-${po.poNumber}.png`, fileUrl: deliveryBase64 });
+                      }}
                       className="p-1 text-sky-600 hover:text-sky-800 hover:bg-slate-50 rounded cursor-pointer"
                       title="Preview Delivery Note"
                     >
