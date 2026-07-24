@@ -540,7 +540,7 @@ export default function DocumentPreviewModal({
                   <tbody className="divide-y divide-slate-200">
                     {items.length > 0 ? (
                       items.map((item, index) => (
-                        <tr key={index} className="text-[11px] hover:bg-slate-50/50">
+                        <tr key={item.id || `doc-item-${index}`} className="text-[11px] hover:bg-slate-50/50">
                           <td className="p-2.5 border border-slate-300 text-center font-mono text-slate-500">{index + 1}</td>
                           <td className="p-2.5 border border-slate-300 font-mono text-slate-800 font-semibold">{item.partNo || 'N/A'}</td>
                           <td className="p-2.5 border border-slate-300">

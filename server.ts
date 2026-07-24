@@ -2139,6 +2139,63 @@ app.post('/api/pr/:id/step-signature', (req, res) => {
   res.json(currentPR);
 });
 
+// Update specific step signature for PO
+app.post('/api/po/:id/step-signature', (req, res) => {
+  const { id } = req.params;
+  const { userId, stepName, action, signatureData, companyStampData, geoCoordinates } = req.body;
+
+  const poIdx = db.purchaseOrders.findIndex(p => p.id === id);
+  if (poIdx === -1) return res.status(404).json({ message: 'PO not found' });
+
+  const currentPO = db.purchaseOrders[poIdx];
+  const user = userId ? db.users.find(u => u.id === userId) : db.users[0];
+
+  const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const ua = req.headers['user-agent'] || 'Unknown Browser';
+  const digitalHash = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+  const sig: SignatureDetails = {
+    signedBy: user?.name || 'Manager',
+    role: user?.role || UserRole.PURCHASING_MANAGER,
+    title: user?.title || 'Manager',
+    timestamp: new Date().toISOString(),
+    ipAddress: ip,
+    userAgent: ua,
+    browser: 'Web Browser',
+    device: 'Web Client Device',
+    geoCoordinates,
+    signatureData,
+    companyStampData: companyStampData || undefined,
+    digitalHash
+  };
+
+  const existingLogIdx = currentPO.workflowLogs.findIndex(l => l.stepName === stepName || (action && l.action === action));
+  if (existingLogIdx !== -1) {
+    currentPO.workflowLogs[existingLogIdx] = {
+      ...currentPO.workflowLogs[existingLogIdx],
+      signature: sig,
+      timestamp: new Date().toISOString()
+    };
+  } else {
+    currentPO.workflowLogs.push({
+      id: `WFL-${Date.now()}`,
+      action: action || 'APPROVED',
+      stepName: stepName || 'Approved',
+      performedBy: user?.id || 'sys',
+      userName: user?.name || 'Manager',
+      userRole: user?.role || UserRole.PURCHASING_MANAGER,
+      comment: 'Signature added / updated.',
+      timestamp: new Date().toISOString(),
+      signature: sig
+    });
+  }
+
+  db.purchaseOrders[poIdx] = currentPO;
+  saveDB(db);
+  res.json(currentPO);
+});
+
+
 // 4.5 CAPEX Requisition Routes
 app.get('/api/capex', (req, res) => {
   res.json(db.capexRequisitions || []);

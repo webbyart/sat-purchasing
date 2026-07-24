@@ -743,7 +743,7 @@ export default function ComparisonView({
 
                             return (
                               <td
-                                key={vendorId}
+                                key={`${item.id || idx}-${vendorId}`}
                                 className={`p-3 border-r border-slate-200 text-right font-medium transition-colors ${
                                   isWinner
                                     ? 'bg-sky-50/30'
@@ -1103,7 +1103,7 @@ export default function ComparisonView({
 
                         return (
                           <td
-                            key={vendor.id}
+                            key={`${item.id || itemIdx}-${vendor.id}`}
                             className={`p-3 border-r border-slate-200 text-right transition-colors ${
                               isChosen ? 'bg-sky-50/20' : isCheapest ? 'bg-emerald-50/10' : ''
                             }`}

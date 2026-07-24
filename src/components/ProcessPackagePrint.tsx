@@ -136,7 +136,7 @@ export default function ProcessPackagePrint({ pr, po, capex }: ProcessPackagePri
                     return paddedItems.map((item, idx) => {
                       const isReal = idx < po.items.length;
                       return (
-                        <tr key={item.id} className="h-5 text-center">
+                        <tr key={item.id || `print-po-pad-${idx}`} className="h-5 text-center">
                           <td className="border border-black p-0.5 text-center text-slate-500">{isReal ? idx + 1 : ''}</td>
                           <td className="border border-black p-0.5 text-left font-medium whitespace-pre-wrap break-words">
                             {isReal ? item.description : ''}
@@ -346,7 +346,7 @@ export default function ProcessPackagePrint({ pr, po, capex }: ProcessPackagePri
                 return paddedItems.map((item, idx) => {
                   const isReal = idx < pr.items.length;
                   return (
-                    <tr key={item.id} className="h-5 text-center text-[8px]">
+                    <tr key={item.id || `print-pr-pad-${idx}`} className="h-5 text-center text-[8px]">
                       <td className="border border-black p-0.5 text-slate-500">{isReal ? idx + 1 : ''}</td>
                       <td className="border border-black p-0.5 font-mono text-left whitespace-pre-wrap break-words">{isReal ? item.partNo : ''}</td>
                       <td className="border border-black p-0.5 text-left font-medium whitespace-pre-wrap break-words">

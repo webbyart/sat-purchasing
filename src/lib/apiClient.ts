@@ -1045,3 +1045,77 @@ export async function updatePrStepSignatureApi(
 
   return false;
 }
+
+// ----------------------------------------------------------------------------
+// Update PO Step Signature
+// ----------------------------------------------------------------------------
+export async function updatePoStepSignatureApi(
+  id: string,
+  userId: string,
+  stepName: string,
+  action: string,
+  signatureData: string,
+  companyStampData?: string,
+  geoCoordinates?: string
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/po/${id}/step-signature`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, stepName, action, signatureData, companyStampData, geoCoordinates })
+    });
+    if (res.ok) return true;
+  } catch (e) {
+    console.warn("API error updating PO step signature:", e);
+  }
+
+  try {
+    const { data: existing } = await supabase.from('purchase_orders').select('*').eq('id', id).single();
+    if (existing) {
+      const po = mapPOFromDb(existing);
+      const ip = '127.0.0.1';
+      const ua = navigator.userAgent;
+      const digitalHash = Math.random().toString(36).substring(2, 15);
+      const sig: SignatureDetails = {
+        signedBy: po.vendorName || 'Manager',
+        role: UserRole.PURCHASING_MANAGER,
+        title: 'Manager',
+        timestamp: new Date().toISOString(),
+        ipAddress: ip,
+        userAgent: ua,
+        browser: 'Web Browser',
+        device: 'Web Client Device',
+        geoCoordinates,
+        signatureData,
+        companyStampData,
+        digitalHash
+      };
+
+      const existingLogIdx = po.workflowLogs.findIndex(l => l.stepName === stepName || (action && l.action === action));
+      if (existingLogIdx !== -1) {
+        po.workflowLogs[existingLogIdx].signature = sig;
+        po.workflowLogs[existingLogIdx].timestamp = new Date().toISOString();
+      } else {
+        po.workflowLogs.push({
+          id: `WFL-${Date.now()}`,
+          action: action || 'APPROVED',
+          stepName: stepName || 'Approved',
+          performedBy: userId,
+          userName: po.vendorName || 'Manager',
+          userRole: UserRole.PURCHASING_MANAGER,
+          comment: 'Signature added / updated.',
+          timestamp: new Date().toISOString(),
+          signature: sig
+        });
+      }
+
+      await supabase.from('purchase_orders').update(mapPOToDb(po)).eq('id', id);
+      return true;
+    }
+  } catch (err) {
+    console.error("Supabase fallback PO step signature error:", err);
+  }
+
+  return false;
+}
+

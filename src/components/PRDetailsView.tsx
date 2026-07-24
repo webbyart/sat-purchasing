@@ -64,7 +64,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
       );
       if (success) {
         setActiveStepSignatureTarget(null);
-        if (onStatusUpdate) onStatusUpdate(pr.id, pr.status);
+        window.location.reload();
       }
     } catch (e: any) {
       setErrorMsg(e.message || 'Failed to save signature');
@@ -520,7 +520,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {editItems.map((item, idx) => (
-                      <tr key={item.id} className="hover:bg-slate-50/40">
+                      <tr key={item.id || `edit-item-${idx}`} className="hover:bg-slate-50/40">
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="text"
@@ -793,7 +793,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                 return paddedItems.map((item, idx) => {
                   const isReal = idx < pr.items.length;
                   return (
-                    <tr key={item.id} className="h-5 text-center text-[9.5px]">
+                    <tr key={item.id || `pad-item-${idx}`} className="h-5 text-center text-[9.5px]">
                       <td className="border border-black p-0.5 font-mono text-slate-500">{isReal ? idx + 1 : ''}</td>
                       <td className="border border-black p-0.5 font-mono font-medium text-slate-800 text-left">
                         {isReal ? item.partNo : ''}
@@ -885,7 +885,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
               </div>
 
               {/* 2. Check By */}
-              <div className="p-1.5 text-left relative min-h-[65px] flex flex-col justify-end group">
+              <div className="p-1.5 text-left relative min-h-[75px] flex flex-col justify-end group">
                 <button
                   onClick={() => setActiveStepSignatureTarget({ stepName: 'Department Manager Approval', title: 'อัพโหลด / ลงนามลายเซนต์ (2. Check By - หัวหน้าแผนก)' })}
                   className="absolute top-1 right-1 no-print opacity-0 group-hover:opacity-100 transition-opacity px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[8px] font-bold flex items-center gap-1 shadow-xs cursor-pointer z-20"
@@ -894,17 +894,17 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                   ✍️ เซนต์/อัพโหลด
                 </button>
                 {(() => {
-                  const checkLog = pr.workflowLogs.find(l => l.stepName === 'Department Manager Approval');
+                  const checkLog = pr.workflowLogs.find(l => l.stepName === 'Department Manager Approval' && l.userRole !== UserRole.EXECUTIVE && l.performedBy !== 'SAT0608' && !l.userName?.includes('Liu Dong'));
                   const sig = checkLog?.signature;
                   if (!sig || !sig.signatureData) return null;
                   return (
-                    <div className="absolute top-2 left-28 z-10 pointer-events-none w-32 flex justify-center">
-                      <div className="relative h-10 w-32 flex justify-center items-center">
+                    <div className="absolute bottom-5 left-24 right-20 z-10 pointer-events-none flex justify-center items-center h-8">
+                      <div className="relative h-8 w-32 flex justify-center items-center">
                         {sig.companyStampData && (
                           <img 
                             src={sig.companyStampData} 
                             alt="Company Stamp" 
-                            className="absolute h-10 object-contain opacity-60 mix-blend-multiply" 
+                            className="absolute h-9 object-contain opacity-60 mix-blend-multiply" 
                             referrerPolicy="no-referrer"
                           />
                         )}
@@ -921,11 +921,18 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                 <div className="flex items-end gap-2 mb-1">
                   <span className="font-bold shrink-0">2. Check By :</span>
                   <span className="border-b border-black flex-1 text-center font-bold px-2 min-w-[100px]">
-                    {pr.workflowLogs.find(l => l.stepName === 'Department Manager Approval')?.userName || ((pr.departmentId === 'DEP004' || pr.departmentId === 'Administration' || pr.departmentName?.includes('HR')) ? 'นางสาวเบ็ญจวรรณ ทิดชาติ' : ' ')}
+                    {(() => {
+                      const log = pr.workflowLogs.find(l => l.stepName === 'Department Manager Approval' && l.userRole !== UserRole.EXECUTIVE && l.performedBy !== 'SAT0608' && !l.userName?.includes('Liu Dong'));
+                      return log?.userName || ((pr.departmentId === 'DEP004' || pr.departmentId === 'Administration' || pr.departmentName?.includes('HR')) ? 'นางสาวเบ็ญจวรรณ ทิดชาติ' : ' ');
+                    })()}
                   </span>
                   <span className="font-bold shrink-0 ml-1">Date :</span>
                   <span className="border-b border-black w-24 text-center font-bold">
-                    {pr.workflowLogs.find(l => l.stepName === 'Department Manager Approval')?.signature?.timestamp.substring(0, 10) || ' '}
+                    {(() => {
+                      const log = pr.workflowLogs.find(l => l.stepName === 'Department Manager Approval' && l.userRole !== UserRole.EXECUTIVE && l.performedBy !== 'SAT0608' && !l.userName?.includes('Liu Dong'));
+                      const ts = log?.signature?.timestamp || log?.timestamp;
+                      return ts ? ts.substring(0, 10) : ' ';
+                    })()}
                   </span>
                 </div>
               </div>
@@ -955,15 +962,16 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
               </div>
 
               {/* Purchasing/Executive Signatures block inside approval section */}
-              <div className="space-y-1 my-1 relative h-12 flex flex-col justify-end">
+              <div className="space-y-1 my-1 relative min-h-[50px] flex flex-col justify-end">
                 {(() => {
-                  const execLog = pr.workflowLogs.find(l => l.stepName === 'Executive Approval');
+                  const execLog = pr.workflowLogs.find(l => l.stepName === 'Executive Approval' || (l.stepName === 'Department Manager Approval' && (l.userRole === UserRole.EXECUTIVE || l.performedBy === 'SAT0608' || l.userName?.includes('Liu Dong'))));
                   const sig = execLog?.signature;
-                  if (!sig || !sig.signatureData) return null;
-                  return (
-                    <div className="absolute top-0 left-28 z-10 pointer-events-none w-32 flex justify-center">
-                      <div className="relative h-10 w-32 flex justify-center items-center">
-                        {sig.companyStampData && (
+                  const signatureSrc = sig?.signatureData || ((pr.status === PRStatus.APPROVED || pr.status === PRStatus.PO_CREATED || execLog) ? 'https://lh3.googleusercontent.com/d/1Xmp1Qv2v5BZaL4csdRD_22CBTENKo_1I' : null);
+
+                  if (signatureSrc) {
+                    return (
+                      <div className="absolute bottom-5 left-24 right-20 z-10 pointer-events-none flex justify-center items-center h-12">
+                        {sig?.companyStampData && (
                           <img 
                             src={sig.companyStampData} 
                             alt="Company Stamp" 
@@ -972,23 +980,31 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                           />
                         )}
                         <img 
-                          src={sig.signatureData} 
+                          src={signatureSrc} 
                           alt="Executive Signature" 
-                          className="relative h-8 object-contain mix-blend-multiply" 
+                          className="h-[2cm] w-[2cm] object-contain mix-blend-multiply relative" 
                           referrerPolicy="no-referrer"
                         />
                       </div>
-                    </div>
-                  );
+                    );
+                  }
+                  return null;
                 })()}
                 <div className="flex items-end gap-2 mb-1">
                   <span className="font-bold shrink-0">Executive / MD :</span>
                   <span className="border-b border-black flex-1 text-center font-bold px-2 min-w-[100px]">
-                    {pr.workflowLogs.find(l => l.stepName === 'Executive Approval')?.userName || ' '}
+                    {(() => {
+                      const log = pr.workflowLogs.find(l => l.stepName === 'Executive Approval' || (l.stepName === 'Department Manager Approval' && (l.userRole === UserRole.EXECUTIVE || l.performedBy === 'SAT0608' || l.userName?.includes('Liu Dong'))));
+                      return log?.userName || (pr.status === PRStatus.APPROVED ? 'Mr. Liu Dong' : ' ');
+                    })()}
                   </span>
                   <span className="font-bold shrink-0 ml-1">Date :</span>
                   <span className="border-b border-black w-24 text-center font-bold">
-                    {pr.workflowLogs.find(l => l.stepName === 'Executive Approval')?.signature?.timestamp.substring(0, 10) || ' '}
+                    {(() => {
+                      const log = pr.workflowLogs.find(l => l.stepName === 'Executive Approval' || (l.stepName === 'Department Manager Approval' && (l.userRole === UserRole.EXECUTIVE || l.performedBy === 'SAT0608' || l.userName?.includes('Liu Dong'))));
+                      const ts = log?.signature?.timestamp || log?.timestamp;
+                      return ts ? ts.substring(0, 10) : (pr.status === PRStatus.APPROVED ? pr.date : ' ');
+                    })()}
                   </span>
                 </div>
               </div>
@@ -1012,7 +1028,11 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
               <span className="font-bold uppercase tracking-wider block mb-0.5">4. For Purchasing Dept.</span>
               <div className="flex items-center gap-20 mt-1 text-[9px]">
                 <span className="font-bold">Received Date : <span className="border-b border-black w-32 inline-block text-center">
-                  {(pr.status === PRStatus.APPROVED || pr.status === PRStatus.PO_CREATED) ? pr.workflowLogs.find(l => l.stepName === 'Purchasing Check')?.timestamp.substring(0, 10) : '...........................................'}
+                  {(() => {
+                    const log = pr.workflowLogs.find(l => l.stepName === 'Purchasing Check');
+                    const ts = log?.signature?.timestamp || log?.timestamp;
+                    return ts ? ts.substring(0, 10) : ((pr.status === PRStatus.APPROVED || pr.status === PRStatus.PO_CREATED) ? pr.date : '...........................................');
+                  })()}
                 </span></span>
                 
                 <div className="flex items-center gap-2 relative">
@@ -1023,12 +1043,17 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
                       const sig = purLog?.signature;
                       if (!sig || !sig.signatureData) return <span className="text-slate-300">...........................................</span>;
                       return (
-                        <img 
-                          src={sig.signatureData} 
-                          alt="Purchasing Signature" 
-                          className="h-8 object-contain mix-blend-multiply" 
-                          referrerPolicy="no-referrer"
-                        />
+                        <div className="absolute bottom-1 left-0 w-full flex justify-center items-center h-8 pointer-events-none">
+                          {sig.companyStampData && (
+                            <img src={sig.companyStampData} alt="Stamp" className="absolute h-9 object-contain opacity-60 mix-blend-multiply" referrerPolicy="no-referrer" />
+                          )}
+                          <img 
+                            src={sig.signatureData} 
+                            alt="Purchasing Signature" 
+                            className="h-8 object-contain mix-blend-multiply relative" 
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
                       );
                     })()}
                   </div>
@@ -1131,7 +1156,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
           {pr.attachments && pr.attachments.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {pr.attachments.map((file, idx) => (
-                <div key={idx} className="flex justify-between items-center border border-slate-200 p-3 rounded-xl bg-slate-50 hover:bg-slate-100/60 transition-colors">
+                <div key={file.id || `att-${idx}`} className="flex justify-between items-center border border-slate-200 p-3 rounded-xl bg-slate-50 hover:bg-slate-100/60 transition-colors">
                   <div className="flex items-center gap-2.5 overflow-hidden">
                     <div className="p-2 bg-white text-slate-700 border border-slate-200 rounded-lg shadow-2xs">
                       <FileText className="h-4.5 w-4.5" />
@@ -1184,7 +1209,7 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
           </h4>
           <div className="relative border-l-2 border-slate-100 pl-4 space-y-6">
             {pr.workflowLogs.map((log, idx) => (
-              <div key={idx} className="relative">
+              <div key={log.id || log.stepName || `log-${idx}`} className="relative">
                 {/* Visual Bullet */}
                 <div className={`absolute -left-[25px] top-1 h-3 w-3 rounded-full border-2 ${
                   log.action === 'APPROVED' ? 'bg-emerald-500 border-emerald-200' :

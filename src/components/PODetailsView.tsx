@@ -21,7 +21,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { PO, User, UserRole, POStatus, PR } from '../types.js';
-import { deletePoApi } from '../lib/apiClient.js';
+import { deletePoApi, updatePoStepSignatureApi } from '../lib/apiClient.js';
 import SignaturePad from './SignaturePad.js';
 import DocumentPreviewModal, { openFileInNewTab } from './DocumentPreviewModal.js';
 import ProcessPackagePrint from './ProcessPackagePrint.js';
@@ -48,11 +48,33 @@ export default function PODetailsView({
   onCancel 
 }: PODetailsViewProps) {
   const [showSigPad, setShowSigPad] = useState(false);
+  const [activeStepSignatureTarget, setActiveStepSignatureTarget] = useState<{ stepName: string; action?: string; title: string } | null>(null);
   const [isRejectAction, setIsRejectAction] = useState(false);
   const [isIssueAction, setIsIssueAction] = useState(false);
   const [comment, setComment] = useState('');
   const [invoiceBase64, setInvoiceBase64] = useState(po.invoiceUrl || '');
   const [deliveryBase64, setDeliveryBase64] = useState(po.deliveryUrl || '');
+
+  const handleStepSignatureSaved = async (signatureData: string, companyStampData?: string, geoCoordinates?: string) => {
+    if (!activeStepSignatureTarget) return;
+    try {
+      const success = await updatePoStepSignatureApi(
+        po.id,
+        currentUser.id,
+        activeStepSignatureTarget.stepName,
+        activeStepSignatureTarget.action || 'APPROVED',
+        signatureData,
+        companyStampData,
+        geoCoordinates
+      );
+      if (success) {
+        setActiveStepSignatureTarget(null);
+        window.location.reload();
+      }
+    } catch (e: any) {
+      console.error(e);
+    }
+  };
   const [previewFile, setPreviewFile] = useState<{ fileName: string, fileUrl: string } | null>(null);
 
   // Package printing states
@@ -370,7 +392,7 @@ export default function PODetailsView({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {editItems.map((item, idx) => (
-                      <tr key={item.id} className="hover:bg-slate-50/40">
+                      <tr key={item.id || `edit-item-${idx}`} className="hover:bg-slate-50/40">
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="text"
@@ -603,7 +625,7 @@ export default function PODetailsView({
                 return paddedItems.map((item, idx) => {
                   const isReal = idx < po.items.length;
                   return (
-                    <tr key={item.id} className="h-6 text-center">
+                    <tr key={item.id || `pad-item-${idx}`} className="h-6 text-center">
                       <td className="border-x border-black p-1">{isReal ? idx + 1 : ''}</td>
                       <td className="border-x border-black p-1 text-left px-2">{isReal ? item.description : ''}</td>
                       <td className="border-x border-black p-1"></td>
@@ -655,8 +677,16 @@ export default function PODetailsView({
         <div className="mt-8">
           <div className="grid grid-cols-4 text-left text-[10px]">
             {/* Box 1: Issued By */}
-            <div className="p-1.5 flex flex-col min-h-[80px]">
-              <span className="font-bold block mb-4 underline">Issued By :</span>
+            <div className="p-1.5 flex flex-col min-h-[80px] relative group">
+              <div className="flex justify-between items-center mb-4">
+                <span className="font-bold underline">Issued By :</span>
+                <button
+                  onClick={() => setActiveStepSignatureTarget({ stepName: 'Issued', action: 'CREATED', title: 'อัพโหลด / ลงนามลายเซนต์ Issued By' })}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-[8px] bg-sky-600 hover:bg-sky-500 text-white px-1.5 py-0.5 rounded shadow flex items-center gap-1 font-sans"
+                >
+                  <span>✍️ เซนต์/อัพโหลด</span>
+                </button>
+              </div>
               <div className="mt-auto relative">
                 {(() => {
                   const createdLog = po.workflowLogs.find(l => l.action === 'CREATED');
@@ -692,11 +722,19 @@ export default function PODetailsView({
             </div>
 
             {/* Box 2: Check By */}
-            <div className="p-1.5 flex flex-col min-h-[80px]">
-              <span className="font-bold block mb-4 underline">Check By : Assistant Manager</span>
+            <div className="p-1.5 flex flex-col min-h-[80px] relative group">
+              <div className="flex justify-between items-center mb-4">
+                <span className="font-bold underline">Check By : Assistant Manager</span>
+                <button
+                  onClick={() => setActiveStepSignatureTarget({ stepName: 'Purchasing Manager PO Approval', action: 'APPROVED', title: 'อัพโหลด / ลงนามลายเซนต์ Check By : Assistant Manager (นางสาวเบ็ญจวรรณ ทิดชาติ)' })}
+                  className="text-[8px] bg-sky-600 hover:bg-sky-500 text-white px-1.5 py-0.5 rounded shadow flex items-center gap-1 font-sans"
+                >
+                  <span>✍️ เซนต์/อัพโหลด</span>
+                </button>
+              </div>
               <div className="mt-auto relative">
                 {(() => {
-                  const checkLog = po.workflowLogs.find(l => l.stepName === 'Purchasing Manager PO Approval');
+                  const checkLog = po.workflowLogs.find(l => l.stepName === 'Purchasing Manager PO Approval' && l.userRole !== UserRole.EXECUTIVE && l.userRole !== UserRole.ADMINISTRATOR);
                   const sig = checkLog?.signature;
                   if (sig && sig.signatureData) {
                     return (
@@ -709,7 +747,7 @@ export default function PODetailsView({
                     );
                   }
                   // If no signature, show placeholder if current user can sign
-                  if (po.status === 'PENDING_PURCHASING_MGR' && (currentUser.role === 'ASSISTANT_MANAGER' || currentUser.role === 'PURCHASING_MANAGER')) {
+                  if (po.status === 'PENDING_PURCHASING_MGR' && (currentUser.role === 'ASSISTANT_MANAGER' || currentUser.role === 'PURCHASING_MANAGER') && currentUser.departmentId !== 'DEP006') {
                     return (
                       <div className="absolute bottom-6 left-0 w-full flex flex-col justify-center items-center h-8 border border-dashed border-sky-300 bg-sky-50/30 rounded text-[6px] text-sky-500 uppercase font-bold animate-pulse">
                         <div className="mb-0.5">Click "Check" to Sign</div>
@@ -720,7 +758,7 @@ export default function PODetailsView({
                 })()}
                 <div className="border-b border-black w-full mb-1"></div>
                 <div>Date : {(() => {
-                  const log = po.workflowLogs.find(l => l.stepName === 'Purchasing Manager PO Approval');
+                  const log = po.workflowLogs.find(l => l.stepName === 'Purchasing Manager PO Approval' && l.userRole !== UserRole.EXECUTIVE);
                   const timestamp = log?.signature?.timestamp || log?.timestamp;
                   if (timestamp) return timestamp.substring(0, 10).split('-').join(' / ');
                   return '.... / .... / ....';
@@ -729,19 +767,29 @@ export default function PODetailsView({
             </div>
 
             {/* Box 3: Approved By */}
-            <div className="p-1.5 flex flex-col min-h-[80px]">
-              <span className="font-bold block mb-4 underline">Approved By :</span>
+            <div className="p-1.5 flex flex-col min-h-[80px] relative group">
+              <div className="flex justify-between items-center mb-4">
+                <span className="font-bold underline">Approved By :</span>
+                <button
+                  onClick={() => setActiveStepSignatureTarget({ stepName: 'Executive Director PO Approval', action: 'APPROVED', title: 'อัพโหลด / ลงนามลายเซนต์ Approved By : Executive' })}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-[8px] bg-sky-600 hover:bg-sky-500 text-white px-1.5 py-0.5 rounded shadow flex items-center gap-1 font-sans"
+                >
+                  <span>✍️ เซนต์/อัพโหลด</span>
+                </button>
+              </div>
               <div className="mt-auto relative">
                 {(() => {
-                  const appLog = po.workflowLogs.find(l => l.stepName === 'Executive Director PO Approval');
+                  const appLog = po.workflowLogs.find(l => l.stepName === 'Executive Director PO Approval' || l.stepName === 'Purchasing Manager PO Approval' && l.userRole === UserRole.EXECUTIVE);
                   const sig = appLog?.signature;
-                  if (sig && sig.signatureData) {
+                  const signatureSrc = sig?.signatureData || ((po.status === 'APPROVED' || appLog) ? 'https://lh3.googleusercontent.com/d/1Xmp1Qv2v5BZaL4csdRD_22CBTENKo_1I' : null);
+
+                  if (signatureSrc) {
                     return (
-                      <div className="absolute bottom-6 left-0 w-full flex justify-center items-center h-8">
-                        {sig.companyStampData && (
+                      <div className="absolute bottom-6 left-0 w-full flex justify-center items-center h-12 pointer-events-none">
+                        {sig?.companyStampData && (
                           <img src={sig.companyStampData} alt="Company Stamp" className="absolute h-10 object-contain opacity-60 mix-blend-multiply" referrerPolicy="no-referrer" />
                         )}
-                        <img src={sig.signatureData} alt="Approved Signature" className="relative h-8 object-contain mix-blend-multiply" referrerPolicy="no-referrer" />
+                        <img src={signatureSrc} alt="Approved Signature" className="h-[2cm] w-[2cm] object-contain mix-blend-multiply relative" referrerPolicy="no-referrer" />
                       </div>
                     );
                   }
@@ -757,10 +805,10 @@ export default function PODetailsView({
                 })()}
                 <div className="border-b border-black w-full mb-1"></div>
                 <div>Date : {(() => {
-                  const log = po.workflowLogs.find(l => l.stepName === 'Executive Director PO Approval');
+                  const log = po.workflowLogs.find(l => l.stepName === 'Executive Director PO Approval' || l.stepName === 'Purchasing Manager PO Approval' && l.userRole === UserRole.EXECUTIVE);
                   const timestamp = log?.signature?.timestamp || log?.timestamp;
                   if (timestamp) return timestamp.substring(0, 10).split('-').join(' / ');
-                  return '.... / .... / ....';
+                  return (po.status === 'APPROVED') ? po.date : '.... / .... / ....';
                 })()}</div>
               </div>
             </div>
@@ -889,7 +937,7 @@ export default function PODetailsView({
           <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4">PO Workflow Logs & Auditing History</h4>
           <div className="relative border-l-2 border-slate-100 pl-4 space-y-5">
             {po.workflowLogs.map((log, idx) => (
-              <div key={idx} className="relative">
+              <div key={log.id || log.stepName || `po-log-${idx}`} className="relative">
                 <div className={`absolute -left-[25px] top-1 h-3 w-3 rounded-full border-2 ${
                   log.action === 'APPROVED' ? 'bg-emerald-500 border-emerald-200' :
                   log.action === 'REJECTED' ? 'bg-rose-500 border-rose-200' : 'bg-slate-500 border-slate-200'
@@ -1020,6 +1068,16 @@ export default function PODetailsView({
           onCancel={() => setShowSigPad(false)}
           title={isIssueAction ? 'Attest PO Issuance (Issued By)' : (isRejectAction ? 'Attest Rejection Signature' : ((currentUser.role === UserRole.PURCHASING_MANAGER || currentUser.role === UserRole.ASSISTANT_MANAGER) ? 'Attest PO Checking (Check By)' : 'Attest PO Approval (Approved By)'))}
           isExecutive={currentUser.role === UserRole.EXECUTIVE || po.status === POStatus.PENDING_EXECUTIVE}
+        />
+      )}
+
+      {/* Step Specific Signature Pad Modal */}
+      {activeStepSignatureTarget && (
+        <SignaturePad
+          onSave={handleStepSignatureSaved}
+          onCancel={() => setActiveStepSignatureTarget(null)}
+          title={activeStepSignatureTarget.title}
+          isExecutive={activeStepSignatureTarget.stepName.includes('Executive') || currentUser.role === UserRole.EXECUTIVE}
         />
       )}
 
