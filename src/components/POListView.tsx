@@ -45,6 +45,22 @@ export default function POListView({ pos = [], prs = [], currentUser, onNavigate
   useEffect(() => {
     let result = Array.isArray(pos) ? pos : [];
 
+    // Role-based filtering for PO list
+    if (currentUser) {
+      if (currentUser.role === UserRole.EMPLOYEE && currentUser.departmentId !== 'DEP004') {
+        result = result.filter(po => po.departmentId === currentUser.departmentId);
+      } else if (currentUser.role === UserRole.DEPARTMENT_MANAGER && currentUser.departmentId !== 'DEP004') {
+        result = result.filter(po => po.departmentId === currentUser.departmentId);
+      } else if (currentUser.role === UserRole.ASSISTANT_MANAGER && currentUser.departmentId !== 'DEP004') {
+        result = result.filter(po => 
+          po.departmentId === currentUser.departmentId ||
+          po.status === POStatus.APPROVED ||
+          po.status === POStatus.SENT_TO_VENDOR ||
+          po.status === POStatus.CLOSED
+        );
+      }
+    }
+
     if (statusFilter !== 'ALL') {
       result = result.filter(po => po.status === statusFilter);
     }

@@ -39,11 +39,19 @@ export default function PRListView({ prs = [], currentUser, onNavigate, onCancel
     // Apply role-based filtering:
     // 1. Employee sees only their own PRs (unless in HR/GA dept)
     // 2. Department Manager sees PRs within their department (unless in HR/GA dept)
-    // 3. Executive sees PRs that are past department manager approval state (PENDING_EXECUTIVE, APPROVED, PO_CREATED, REJECTED, CANCELLED)
+    // 3. Assistant Manager can view all PRs in their department PLUS all APPROVED / PO_CREATED PRs from everyone
+    // 4. Executive sees PRs that are past department manager approval state (PENDING_EXECUTIVE, APPROVED, PO_CREATED, REJECTED, CANCELLED)
     if (currentUser.role === UserRole.EMPLOYEE && currentUser.departmentId !== 'DEP004') {
       result = result.filter(pr => pr.requestorId === currentUser.id || pr.requestorEmail === currentUser.email);
     } else if (currentUser.role === UserRole.DEPARTMENT_MANAGER && currentUser.departmentId !== 'DEP004') {
       result = result.filter(pr => pr.departmentId === currentUser.departmentId);
+    } else if (currentUser.role === UserRole.ASSISTANT_MANAGER && currentUser.departmentId !== 'DEP004') {
+      result = result.filter(pr => 
+        pr.departmentId === currentUser.departmentId ||
+        pr.requestorId === currentUser.id ||
+        pr.status === PRStatus.APPROVED ||
+        pr.status === PRStatus.PO_CREATED
+      );
     } else if (currentUser.role === UserRole.EXECUTIVE) {
       result = result.filter(pr => pr.status !== PRStatus.DRAFT && pr.status !== PRStatus.PENDING_DEPT_MGR);
     }
