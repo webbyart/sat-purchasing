@@ -12,7 +12,8 @@ import {
   CapexRequisition,
   UserRole,
   PRStatus,
-  POStatus
+  POStatus,
+  SignatureDetails
 } from '../types.js';
 
 // ============================================================================
@@ -969,4 +970,78 @@ export async function saveVendorApi(vendorData: any): Promise<Vendor> {
   if (error) throw new Error(error.message);
 
   return vendor;
+}
+
+// ----------------------------------------------------------------------------
+// Update PR Step Signature
+// ----------------------------------------------------------------------------
+export async function updatePrStepSignatureApi(
+  id: string,
+  userId: string,
+  stepName: string,
+  action: string,
+  signatureData: string,
+  companyStampData?: string,
+  geoCoordinates?: string
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/pr/${id}/step-signature`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, stepName, action, signatureData, companyStampData, geoCoordinates })
+    });
+    if (res.ok) return true;
+  } catch (e) {
+    console.warn("API error updating step signature:", e);
+  }
+
+  // Fallback via Supabase
+  try {
+    const { data: existing } = await supabase.from('purchase_requisitions').select('*').eq('id', id).single();
+    if (existing) {
+      const pr = mapPRFromDb(existing);
+      const ip = '127.0.0.1';
+      const ua = navigator.userAgent;
+      const digitalHash = Math.random().toString(36).substring(2, 15);
+      const sig: SignatureDetails = {
+        signedBy: pr.requestorName,
+        role: UserRole.EMPLOYEE,
+        title: 'Staff',
+        timestamp: new Date().toISOString(),
+        ipAddress: ip,
+        userAgent: ua,
+        browser: 'Web Browser',
+        device: 'Web Client Device',
+        geoCoordinates,
+        signatureData,
+        companyStampData,
+        digitalHash
+      };
+
+      const existingLogIdx = pr.workflowLogs.findIndex(l => l.stepName === stepName || (action && l.action === action));
+      if (existingLogIdx !== -1) {
+        pr.workflowLogs[existingLogIdx].signature = sig;
+        pr.workflowLogs[existingLogIdx].timestamp = new Date().toISOString();
+      } else {
+        pr.workflowLogs.push({
+          id: `WFL-${Date.now()}`,
+          action: action || 'APPROVED',
+          stepName: stepName || 'Approved',
+          performedBy: userId,
+          userName: pr.requestorName,
+          userRole: UserRole.EMPLOYEE,
+          comment: 'Signature added / updated.',
+          timestamp: new Date().toISOString(),
+          signature: sig
+        });
+      }
+
+      await supabase.from('purchase_requisitions').update(mapPRToDb(pr)).eq('id', id);
+      return true;
+    }
+  } catch (err) {
+    console.error("Supabase fallback step signature error:", err);
+  }
+
+  return false;
 }

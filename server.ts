@@ -2083,6 +2083,62 @@ app.post('/api/pr/:id/approve', (req, res) => {
   res.json(currentPR);
 });
 
+// Update specific step signature for PR
+app.post('/api/pr/:id/step-signature', (req, res) => {
+  const { id } = req.params;
+  const { userId, stepName, action, signatureData, companyStampData, geoCoordinates } = req.body;
+
+  const prIdx = db.purchaseRequisitions.findIndex(p => p.id === id);
+  if (prIdx === -1) return res.status(404).json({ message: 'PR not found' });
+
+  const currentPR = db.purchaseRequisitions[prIdx];
+  const user = userId ? db.users.find(u => u.id === userId) : db.users[0];
+
+  const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const ua = req.headers['user-agent'] || 'Unknown Browser';
+  const digitalHash = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+  const sig: SignatureDetails = {
+    signedBy: user?.name || currentPR.requestorName,
+    role: user?.role || UserRole.EMPLOYEE,
+    title: user?.title || 'Staff',
+    timestamp: new Date().toISOString(),
+    ipAddress: ip,
+    userAgent: ua,
+    browser: 'Web Browser',
+    device: 'Web Client Device',
+    geoCoordinates,
+    signatureData,
+    companyStampData: companyStampData || undefined,
+    digitalHash
+  };
+
+  const existingLogIdx = currentPR.workflowLogs.findIndex(l => l.stepName === stepName || (action && l.action === action));
+  if (existingLogIdx !== -1) {
+    currentPR.workflowLogs[existingLogIdx] = {
+      ...currentPR.workflowLogs[existingLogIdx],
+      signature: sig,
+      timestamp: new Date().toISOString()
+    };
+  } else {
+    currentPR.workflowLogs.push({
+      id: `WFL-${Date.now()}`,
+      action: action || 'APPROVED',
+      stepName: stepName || 'Approved',
+      performedBy: user?.id || currentPR.requestorId,
+      userName: user?.name || currentPR.requestorName,
+      userRole: user?.role || UserRole.EMPLOYEE,
+      comment: 'Signature added / updated.',
+      timestamp: new Date().toISOString(),
+      signature: sig
+    });
+  }
+
+  db.purchaseRequisitions[prIdx] = currentPR;
+  saveDB(db);
+  res.json(currentPR);
+});
+
 // 4.5 CAPEX Requisition Routes
 app.get('/api/capex', (req, res) => {
   res.json(db.capexRequisitions || []);

@@ -26,7 +26,7 @@ import {
   Upload
 } from 'lucide-react';
 import { PR, User, UserRole, PRStatus, PO, Attachment } from '../types.js';
-import { deletePrApi } from '../lib/apiClient.js';
+import { deletePrApi, updatePrStepSignatureApi } from '../lib/apiClient.js';
 import SignaturePad from './SignaturePad.js';
 import DocumentPreviewModal, { openFileInNewTab } from './DocumentPreviewModal.js';
 import ProcessPackagePrint from './ProcessPackagePrint.js';
@@ -43,11 +43,33 @@ interface PRDetailsViewProps {
 
 export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO, onCancel, onNavigate, onStatusUpdate }: PRDetailsViewProps) {
   const [showSigPad, setShowSigPad] = useState(false);
+  const [activeStepSignatureTarget, setActiveStepSignatureTarget] = useState<{ stepName: string; action?: string; title: string } | null>(null);
   const [isRejectAction, setIsRejectAction] = useState(false);
   const [isGeneratingPO, setIsGeneratingPO] = useState(false);
   const [comment, setComment] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [previewFile, setPreviewFile] = useState<{ fileName: string, fileUrl: string } | null>(null);
+
+  const handleStepSignatureSaved = async (signatureData: string, companyStampData?: string, geoCoordinates?: string) => {
+    if (!activeStepSignatureTarget) return;
+    try {
+      const success = await updatePrStepSignatureApi(
+        pr.id,
+        currentUser.id,
+        activeStepSignatureTarget.stepName,
+        activeStepSignatureTarget.action || 'APPROVED',
+        signatureData,
+        companyStampData,
+        geoCoordinates
+      );
+      if (success) {
+        setActiveStepSignatureTarget(null);
+        if (onStatusUpdate) onStatusUpdate(pr.id, pr.status);
+      }
+    } catch (e: any) {
+      setErrorMsg(e.message || 'Failed to save signature');
+    }
+  };
 
   // Package printing states
   const [relatedPO, setRelatedPO] = useState<PO | null>(null);
@@ -821,7 +843,14 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
             {/* Box 1 (Left column): 1. Requested by & 2. Check By */}
             <div className="border-r border-black flex flex-col divide-y divide-black">
               {/* 1. Requested By */}
-              <div className="p-1.5 text-left relative min-h-[65px] flex flex-col justify-end">
+              <div className="p-1.5 text-left relative min-h-[65px] flex flex-col justify-end group">
+                <button
+                  onClick={() => setActiveStepSignatureTarget({ stepName: 'Pending Manager Approval', action: 'SUBMITTED', title: 'อัพโหลด / ลงนามลายเซนต์ (1. Requested by - พนักงานออกใบ PR)' })}
+                  className="absolute top-1 right-1 no-print opacity-0 group-hover:opacity-100 transition-opacity px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[8px] font-bold flex items-center gap-1 shadow-xs cursor-pointer z-20"
+                  title="อัพโหลดรูปหรือวาดลายเซนต์วางด้านบนชื่อ"
+                >
+                  ✍️ เซนต์/อัพโหลด
+                </button>
                 {(() => {
                   const submitLog = pr.workflowLogs.find(l => l.action === 'SUBMITTED');
                   const sig = submitLog?.signature;
@@ -856,7 +885,14 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
               </div>
 
               {/* 2. Check By */}
-              <div className="p-1.5 text-left relative min-h-[65px] flex flex-col justify-end">
+              <div className="p-1.5 text-left relative min-h-[65px] flex flex-col justify-end group">
+                <button
+                  onClick={() => setActiveStepSignatureTarget({ stepName: 'Department Manager Approval', title: 'อัพโหลด / ลงนามลายเซนต์ (2. Check By - หัวหน้าแผนก)' })}
+                  className="absolute top-1 right-1 no-print opacity-0 group-hover:opacity-100 transition-opacity px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[8px] font-bold flex items-center gap-1 shadow-xs cursor-pointer z-20"
+                  title="อัพโหลดรูปหรือวาดลายเซนต์วางด้านบนชื่อ"
+                >
+                  ✍️ เซนต์/อัพโหลด
+                </button>
                 {(() => {
                   const checkLog = pr.workflowLogs.find(l => l.stepName === 'Department Manager Approval');
                   const sig = checkLog?.signature;
@@ -896,7 +932,14 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
             </div>
 
         {/* Box 2 (Right column): 3. Approved boxes, Agent sign, Remark */}
-            <div className="p-1.5 text-left flex flex-col justify-between relative min-h-[130px]">
+            <div className="p-1.5 text-left flex flex-col justify-between relative min-h-[130px] group">
+              <button
+                onClick={() => setActiveStepSignatureTarget({ stepName: 'Executive Approval', title: 'อัพโหลด / ลงนามลายเซนต์ (3. Approved - Executive / MD)' })}
+                className="absolute top-1 right-1 no-print opacity-0 group-hover:opacity-100 transition-opacity px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[8px] font-bold flex items-center gap-1 shadow-xs cursor-pointer z-20"
+                title="อัพโหลดรูปหรือวาดลายเซนต์วางด้านบนชื่อ"
+              >
+                ✍️ เซนต์/อัพโหลด
+              </button>
               <div>
                 <span className="font-bold uppercase tracking-wider">3. Approved</span>
                 <div className="flex gap-4 mt-1 font-bold text-[9px]">
@@ -958,7 +1001,14 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
             </div>
 
             {/* Box 3 (Bottom row - full width): 4. For Purchasing Dept. */}
-            <div className="col-span-2 border-t border-black p-1.5 text-left">
+            <div className="col-span-2 border-t border-black p-1.5 text-left relative group">
+              <button
+                onClick={() => setActiveStepSignatureTarget({ stepName: 'Purchasing Check', title: 'อัพโหลด / ลงนามลายเซนต์ (4. For Purchasing Dept.)' })}
+                className="absolute top-1 right-1 no-print opacity-0 group-hover:opacity-100 transition-opacity px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[8px] font-bold flex items-center gap-1 shadow-xs cursor-pointer z-20"
+                title="อัพโหลดรูปหรือวาดลายเซนต์วางด้านบนชื่อ"
+              >
+                ✍️ เซนต์/อัพโหลด
+              </button>
               <span className="font-bold uppercase tracking-wider block mb-0.5">4. For Purchasing Dept.</span>
               <div className="flex items-center gap-20 mt-1 text-[9px]">
                 <span className="font-bold">Received Date : <span className="border-b border-black w-32 inline-block text-center">
@@ -1341,6 +1391,15 @@ export default function PRDetailsView({ pr, currentUser, onApprove, onGeneratePO
               : 'Purchasing Check Touchpad Sign & Complete Verification'
           }
           isExecutive={currentUser.role === UserRole.EXECUTIVE || pr.status === PRStatus.PENDING_EXECUTIVE}
+        />
+      )}
+
+      {activeStepSignatureTarget && (
+        <SignaturePad
+          onSave={handleStepSignatureSaved}
+          onCancel={() => setActiveStepSignatureTarget(null)}
+          title={activeStepSignatureTarget.title}
+          isExecutive={activeStepSignatureTarget.stepName === 'Executive Approval'}
         />
       )}
 

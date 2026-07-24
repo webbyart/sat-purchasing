@@ -136,9 +136,32 @@ export default function App() {
     }
   };
 
+  // Request browser notification permission on load
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
   // Real-time unread chat counter & alert notification listener (Firestore + Supabase)
   useEffect(() => {
     if (!currentUser) return;
+
+    const triggerNotification = (senderName: string, text: string, roomId: string) => {
+      playChatNotificationSound();
+      setChatToast({ roomId, senderName, text });
+      
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification(`ข้อความใหม่จาก ${senderName}`, {
+            body: text,
+            icon: '/favicon.ico'
+          });
+        } catch (e) {
+          // Notification failed
+        }
+      }
+    };
 
     // Supabase polling for chat notifications
     const checkSupabaseChatUnread = async () => {
@@ -177,8 +200,7 @@ export default function App() {
           setUnreadChatCount(prev => Math.max(prev, totalUnread));
 
           if (newestMsg) {
-            playChatNotificationSound();
-            setChatToast(newestMsg);
+            triggerNotification(newestMsg.senderName, newestMsg.text, newestMsg.roomId);
           }
 
           isFirstMountRef.current = false;
@@ -189,7 +211,29 @@ export default function App() {
     };
 
     checkSupabaseChatUnread();
-    const supaInterval = setInterval(checkSupabaseChatUnread, 3000);
+    const supaInterval = setInterval(checkSupabaseChatUnread, 2000);
+
+    // Supabase Realtime channel subscription for chat messages & rooms
+    let supaChannel: any = null;
+    try {
+      supaChannel = supabase
+        .channel('public:chat_notifications')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_rooms' }, () => {
+          checkSupabaseChatUnread();
+        })
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload: any) => {
+          const newMsg = payload.new;
+          if (newMsg && newMsg.sender_id !== currentUser.id) {
+            const senderUser = allUsers.find(u => u.id === newMsg.sender_id);
+            const senderName = senderUser ? (senderUser.thaiName || senderUser.name) : (newMsg.sender_name || 'เพื่อนร่วมงาน');
+            triggerNotification(senderName, newMsg.text || 'ส่งข้อความใหม่ถึงคุณ', newMsg.room_id);
+            checkSupabaseChatUnread();
+          }
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn('Supabase realtime channel setup notice:', e);
+    }
 
     let unsubscribe = () => {};
     if (db) {
@@ -229,8 +273,7 @@ export default function App() {
           setUnreadChatCount(prev => Math.max(prev, totalUnread));
 
           if (newestMsg) {
-            playChatNotificationSound();
-            setChatToast(newestMsg);
+            triggerNotification(newestMsg.senderName, newestMsg.text, newestMsg.roomId);
           }
 
           isFirstMountRef.current = false;
@@ -244,6 +287,9 @@ export default function App() {
 
     return () => {
       clearInterval(supaInterval);
+      if (supaChannel) {
+        supabase.removeChannel(supaChannel);
+      }
       unsubscribe();
     };
   }, [currentUser?.id, allUsers]);
